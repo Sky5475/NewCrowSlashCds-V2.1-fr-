@@ -168,37 +168,53 @@ export default {
 			interaction.channel.delete().catch(() => { });
 		}
 
+  if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_select') {
+    const optiontxt = config[interaction.values[0]] || 'Ticket';
+    const existing = interaction.guild.channels.cache.find(c =>
+        c.topic === `${optiontxt} - ${interaction.user.username}`
+    );
+    if (existing) {
+        return interaction.reply({ content: 'Vous avez déjà un ticket ouvert.', ephemeral: true });
+    }
 
-		if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_select') {
-			const optiontxt = config[interaction.values[0]] || 'Ticket';
-			const existing = interaction.guild.channels.cache.find(c =>
-				c.topic === `${optiontxt} - ${interaction.user.username}`
-			);
-			if (existing) {
-				return interaction.reply({ content: 'Vous avez déjà un ticket ouvert.', ephemeral: true });
-			}
-			db.get('SELECT category FROM ticket WHERE guild = ?', [interaction.guild.id], async (err, row) => {
-				let parent = row?.category || null;
-				if (parent && typeof parent !== 'string') parent = String(parent);
-				const ticketChannel = await interaction.guild.channels.create({
-					name: `ticket-${interaction.user.username}`,
-					type: 0,
-					topic: `${optiontxt} - ${interaction.user.username}`,
-					parent: parent,
-					    permissionOverwrites: [
-        {
+    db.get('SELECT category FROM ticket WHERE guild = ?', [interaction.guild.id], async (err, row) => {
+        if (err) return console.error(err);
+        let parent = row?.category || null;
+        if (parent && typeof parent !== 'string') parent = String(parent);
+
+        const category = interaction.guild.channels.cache.get(parent);
+        if (!category) return interaction.reply({ content: 'Catégorie invalide.', ephemeral: true });
+
+        const permissionOverwrites = category.permissionOverwrites.cache.size > 0
+            ? category.permissionOverwrites.cache.map(po => ({
+                id: po.id,
+                allow: po.allow.toArray(),
+                deny: po.deny.toArray(),
+            }))
+            : [];
+
+        permissionOverwrites.push({
             id: interaction.user.id,
-            allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
-        }
-    ],
-				});
-				db.run(
-					'INSERT INTO ticketchannel (channelId) VALUES (?)',
-					[ticketChannel.id],
-					(err) => {
-						if (err) console.error(err);
-					}
-				);
+            allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
+        });
+
+        const ticketChannel = await interaction.guild.channels.create({
+            name: `ticket-${interaction.user.username}`,
+            type: 0,
+            topic: `${optiontxt} - ${interaction.user.username}`,
+            parent: category,
+            permissionOverwrites: permissionOverwrites.length > 0 ? permissionOverwrites : undefined,
+        });
+
+        db.run(
+            'INSERT INTO ticketchannel (channelId) VALUES (?)',
+            [ticketChannel.id],
+            (err) => { if (err) console.error(err); }
+        );
+
+        interaction.reply({ content: `Ticket créé: ${ticketChannel}`, ephemeral: true });
+    });
+}
 
 				const close = new ActionRowBuilder().addComponents(
 					new ButtonBuilder()
