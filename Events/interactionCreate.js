@@ -213,8 +213,8 @@ export default {
         );
 
         interaction.reply({ content: `Ticket créé: ${ticketChannel}`, ephemeral: true });
-    });
-}
+
+
 
 				const close = new ActionRowBuilder().addComponents(
 					new ButtonBuilder()
